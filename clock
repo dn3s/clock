@@ -1,0 +1,281 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Spec;
+use Text::Wrap;
+use POSIX;
+use Time::Piece;
+use Data::Dumper;
+use Math::Round;
+use Term::ANSIColor;
+(my $command, my $job, my $n)=@ARGV;
+my $dir=File::Spec->catdir($ENV{"HOME"}, ".hours");
+my $css="test.css";
+my $currentfile=File::Spec->catdir($dir, ".current");
+$command=$command || "";
+
+if($command=~/^(in|on|go|start|begin|open)$/) {
+	start($job);
+}
+elsif($command=~/^(out|off|stop|finish|done|close|quit|exit|leave|end)$/) {
+	stop($job || current());
+}
+elsif($command=~/^(list|print|show|view|display|history|report|invoice|bill|che(ck|que))$/) {
+	report($job || current(), $n);
+}
+elsif($command=~/^(html|fancy)$/) {
+	html($job || current(), $n);
+}
+elsif($command=~/^(ls|list|what|projects|jobs|work)$/) {
+	ls();
+}
+elsif($command=~/^(-*help|-?h)$/) {
+	print(wrap("","",<<END));
+$0:
+Keep track of your projects and shit.
+
+Usage:
+$0 <command>
+
+Commands:
+
+Start:
+Type "start" or "in" or "go" or whatever, followed by the name of the job you want to track. If the job file doesn't exist, it will be created.
+
+Stop:
+Type "stop" or "out" or something, to mark when you're done working on a job for the day.
+
+Status: type "status" or really anything other than "help" and it will tell you what you're supposed to be working on and how long you've been at it
+END
+}
+else {
+	my $j=$job || current();
+	$j?status($j):ls();
+}
+
+sub start
+{
+	(my $job)=@_;
+	if(my $status=jobstatus($job)) {
+		my $duration=friendlyDuration($status);
+		print("You are already working on $job! (and have been for $duration)\n");
+		exit 1;
+	}
+	my $current=current();
+	if($current) {
+		print("I guess you are done with $current then...\n");
+		stop($current);
+	}
+	open(my $fh, ">>", jobfile($job)) or die("Cannot open file for writing\n");
+	print $fh time();
+	close($fh);
+	current($job);
+	print("You are now working on $job\n");
+}
+
+sub stop
+{
+	(my $job)=@_;
+	if($job and -e jobfile($job) and my $status=jobstatus($job)) {
+		print("You are done working on $job. What have you been doing for the last ".friendlyDuration($status)."?\n> ");
+		my $note=<STDIN>;
+		chomp($note);
+		open(my $fh, ">>", jobfile($job)) or die("Cannot open file for writing\n");
+		print $fh " $status $note\n";
+		close($fh);
+		current("");
+	}
+	else {
+		print("You aren't working on anything!\n");
+	}
+}
+
+sub ls
+{
+	mkdir($dir) if( ! -d $dir );
+	opendir(my $d, $dir) or die();
+	my @files=sort(grep(!/^\./, readdir($d)));
+	print(color("bold underline")."Projects:\n".color("reset"));
+	my $maxlen=0;
+	for my $file (@files) {
+		my $l=length($file);
+		$maxlen=$l if($l>$maxlen);
+	}
+	for my $file (@files) {
+		my $total=duration(total($file));
+		print(sprintf("%-${maxlen}s %s\n", $file, $total));
+	}
+}
+
+sub total
+{
+	(my $job)=@_;
+	my $jobfile=jobfile($job);
+	my $total=0;
+	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/tail $jobfile`)) {
+		foreach my $line (@lines) {
+			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) {
+				$total+=$duration;
+			}
+			elsif(($timestamp)=$line=~/^(\d+)$/) {
+				my $duration=time()-$timestamp;
+				$total+=$duration;
+			}
+		}
+	}
+	return $total;
+}
+
+sub report
+{
+	(my $job, my $n)=@_;
+	my $jobfile=jobfile($job);
+	my $total=0;
+	print("Work history for $job:\n");
+	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/tail $jobfile`)) {
+		print("┌───────────────┬────────┬────────┬────────┐\n");
+		print("│Date           │Time    │Duration│Comments│\n"); 
+		print("├───────────────┼────────┼────────┼────────┘\n");
+		foreach my $line (@lines) {
+			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) {
+				$total+=$duration;
+				my $time=localtime($timestamp)->strftime("%T");
+				my $date=localtime($timestamp)->strftime("%a %b %e %Y");
+				$duration=duration($duration);
+				print("│$date│$time│$duration│$comment\n"); 
+			}
+			elsif(($timestamp)=$line=~/^(\d+)$/) {
+				my $duration=time()-$timestamp;
+				$total+=$duration;
+				my $time=localtime($timestamp)->strftime("%T");
+				my $date=localtime($timestamp)->strftime("%a %b %e %Y");
+				$duration=duration($duration);
+				print(color("italic")."│$date│$time│$duration│ongoing\n".color("reset")); 
+				
+			}
+		}
+		print("└───────────────┴────────┴────────┘\n");
+		print("Total: ".friendlyDuration($total)."\n");
+		print("Pay: \$".nearest(0.01, $total/3600*$n)."\n") if($n);
+	}
+}
+
+sub html
+{
+	(my $job)=@_;
+	my $jobfile=jobfile($job);
+	my $total=0;
+	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/tail $jobfile`)) {
+		print("<link rel=\"stylesheet\" href=\"$css\">");
+		print("<h1>Invoice for $job</h1>");
+		print("<table><thead><tr><th>Date</th><th>Time</th><th>Duration</th><th>Comments</th></tr></thead><tbody>"); 
+		foreach my $line (@lines) {
+			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) {
+				$total+=$duration;
+				my $time=localtime($timestamp)->strftime("%T");
+				my $date=localtime($timestamp)->strftime("%a %b %e %Y");
+				$duration=duration($duration);
+				print("<tr><td>$date</td><td>$time</td><td>$duration</td><td>$comment</td></tr>"); 
+			}
+			elsif(($timestamp)=$line=~/^(\d+)$/) {
+				my $duration=time()-$timestamp;
+				$total+=$duration;
+				my $time=localtime($timestamp)->strftime("%T");
+				my $date=localtime($timestamp)->strftime("%a %b %e %Y");
+				$duration=duration($duration);
+				print("<tr class=\"ongoing\"><td>$date</td><td>$time</td><td>$duration</td><td></td></tr>"); 
+				
+			}
+		}
+		print("");
+		print("</tbody></table><div id=\"total_hours\">".friendlyDuration($total)."</div>");
+		print("<div id=\"rate\">\$$n</div>") if($n);
+		print("<div id=\"fee\">\$".nearest(0.01, $total/3600*$n)."\n") if($n);
+	}
+}
+
+sub invoice
+{
+	#TODO: implement. move files over and shit.
+}
+
+sub status
+{
+	(my $job)=@_;
+	if($job) {
+		my $duration=friendlyDuration(jobstatus($job));
+		print("You have been working on $job for $duration\n");
+	}
+	else {
+		print("You are not working on anything right now. Get to work!\n");
+	}
+}
+
+sub jobstatus
+{
+	(my $job)=@_;
+	my $jobfile=jobfile($job);
+	if(-e $jobfile and `/usr/bin/tail -1 $jobfile`=~/^(\d+)\s*$/) {
+		return time()-$1;
+	}
+	return 0;
+}
+
+sub jobfile
+{
+	return File::Spec->catdir($dir, shift());
+}
+
+sub current
+{
+	(my $job)=@_;
+	if(defined $job) {
+		open(my $fh, ">", $currentfile) or die("Error opening $currentfile");
+		print $fh "$job\n";
+		close($fh);
+		return $job;
+	}
+	if(-e $currentfile) {
+		open(my $fh, "<", $currentfile) or die("Error opening $currentfile");
+		my $current=readline($fh);
+		chomp($current);
+		close($fh);
+		return $current;
+	}
+}
+sub duration
+{
+	(my $sec)=@_; 
+	my $day=floor($sec/86400);
+	my $out=$day?"${day}d ":"";
+	return $out.(gmtime($sec)->strftime("%T"));
+}
+sub friendlyDuration
+{
+	(my $sec)=@_;
+	my $day=floor($sec/86400);
+	my $hrs=floor($sec/3600)%24;
+	my $min=floor($sec/60)%60;
+	$sec%=60;
+	my $out="";
+	$out=append($out, plural($day, "day"), ", ") if($day);
+	$out=append($out, plural($hrs, "hour"), ", ") if($hrs);
+	$out=append($out, plural($min, "minute"), ", ") if($min);
+	$out=append($out, plural($sec, "second"), " and ") if($sec);
+	return $out;
+}
+sub append
+{
+	(my $target, my $source, my $separator)=@_;
+	if($target) {
+		$target=$target.$separator;
+	}
+	$target.=$source;
+	return $target;
+}
+sub plural
+{
+	(my $num, my $noun)=@_;
+	my $s=$num==1?"":"s";
+	return "$num $noun$s";
+}

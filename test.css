@@ -1,0 +1,49 @@
+body {
+	background: #fff;
+	font-family: sans;
+}
+h1 {
+	margin: 0;
+	margin-bottom: 0.1em;
+	color: #111;
+}
+table, div {
+	border: 1px solid #111;
+	margin-bottom: 1em;
+}
+table {
+	border-collapse: collapse;
+	width: 100%;
+}
+th, tfoot td, div::before {
+	text-align: left;
+	background: #111;
+	font-weight: normal;
+	color: #eee;
+}
+th, td, div::before {
+	padding: 0.1em 0.2em;
+}
+tbody td:nth-child(even) {
+	background: #ddd;
+}
+div::before {
+	display: inline-block;
+	width: 10em;
+	margin-right: 0.5em;
+}
+td:last-child {
+	font-style: italic;
+}
+#total_hours::before {
+	content: "Total Hours:";
+}
+#rate::before {
+	content: "Hourly Rate of Pay:";
+}
+#fee::before {
+	content: "Total:";
+}
+#fee {
+	font-weight: bold;
+}
