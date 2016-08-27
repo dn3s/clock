@@ -246,9 +246,11 @@ sub current
 sub duration
 {
 	(my $sec)=@_; 
-	my $day=floor($sec/86400);
-	my $out=$day?"${day}d ":"";
-	return $out.(gmtime($sec)->strftime("%T"));
+	my $out="";
+	my $hrs=sprintf("%02u",floor($sec/3600));
+	my $min=sprintf("%02u",floor($sec/60)%60);
+	$sec=sprintf("%02u",$sec%60);
+	return "${hrs}:${min}:${sec}";
 }
 sub friendlyDuration
 {
