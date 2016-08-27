@@ -1,7 +1,8 @@
 INSTALL=install
-exec_prefix=$(prefix)
-bindir=$(exec_prefix)/bin
+prefix=/usr
+bindir=$(prefix)/bin
 
+clock:
 
 .PHONY: install
 install: clock
