@@ -1,4 +1,5 @@
-Usage -----
+Usage
+-----
 
 ```
 clock <command>
