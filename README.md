@@ -29,5 +29,5 @@ Requirements
 Installation
 ------------
 
-- `make`, and (as root) `make install`, or just copy the script into your $PATH
+- Run `make install` as root, or just copy the script into your $PATH
   somewhere
