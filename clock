@@ -128,23 +128,34 @@ sub total
 
 sub report
 {
-	(my $job, my $n)=@_;
+	(my $job, my $rate=0)=@_;
 	my $jobfile=jobfile($job);
 	my $total=0;
+	my $gtotal=0;
+	my $totalMoney=0;
 	print("Work history for $job:\n");
 	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/tail $jobfile`)) {
 		print("┌───────────────┬────────┬────────┬────────┐\n");
 		print("│Date           │Time    │Duration│Comments│\n"); 
 		print("├───────────────┼────────┼────────┼────────┘\n");
 		foreach my $line (@lines) {
-			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) {
+			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) { #a normal, closed row
 				$total+=$duration;
+				$gtotal+=$duration;
 				my $time=localtime($timestamp)->strftime("%T");
 				my $date=localtime($timestamp)->strftime("%a %b %e %Y");
 				$duration=duration($duration);
 				print("│$date│$time│$duration│$comment\n"); 
 			}
-			elsif(($timestamp)=$line=~/^(\d+)$/) {
+			elsif((my $r, my $subtotalComment)=$line=~/^\s+(\d+(?:\.\d+)?)?\s*(.*)$/) { #a subtotal/invoice type thing
+				print("└───────────────┴────────┴────────┘\n");
+				$rate=$r if($r);
+				print("$subtotalComment ") if($subtotalComment);
+				$totalMoney+=subtotal($total, $rate);
+				print("┌───────────────┬────────┬────────┐\n");
+				$total=0;
+			}
+			elsif(($timestamp)=$line=~/^(\d+)$/) { #an entry that has not yet been closed (still onging)
 				my $duration=time()-$timestamp;
 				$total+=$duration;
 				my $time=localtime($timestamp)->strftime("%T");
@@ -155,9 +166,26 @@ sub report
 			}
 		}
 		print("└───────────────┴────────┴────────┘\n");
-		print("Total: ".friendlyDuration($total)."\n");
-		print("Pay: \$".nearest(0.01, $total/3600*$n)."\n") if($n);
+		$totalMoney+=subtotal($total, $rate);
+		print(color("bold"));
+		print("\nTotal: ");
+		print(friendlyDuration($total));
+		printf(' ($%.2f)', $totalMoney) if($totalMoney);
+		print(color("reset")."\n");
 	}
+}
+sub subtotal
+{
+	(my $total, my $rate)=@_;
+	print(friendlyDuration($total));
+	my $money=0;
+	if($rate) {
+		$rate=nearest(0.01, $rate); #for the sake of honesty, gotta round it for the maths if we're going to display it rounded
+		$money=nearest(0.01, $total/3600*$rate);
+		printf(' ($%.2f, $%.2f/h)', $money, $rate);
+	}
+	print("\n");
+	return $money;
 }
 
 sub html
