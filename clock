@@ -168,7 +168,7 @@ sub report
 	my $gtotal=0;
 	my $totalMoney=0;
 	my $enclosed=1;
-	print("Work history for $job:\n");
+	print("\n" . color("bold") . "Work history for $job:" . color("reset") . "\n");
 	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/cat $jobfile`)) {
 		print("╭───────────────┬────────┬────────┬────────╮\n");
 		print("│Date           │Time    │Duration│Comments│\n"); 
@@ -216,7 +216,7 @@ sub report
 		print("\nGrand Total: ");
 		print(friendlyDuration($gtotal));
 		printf(' ($%.2f)', $totalMoney) if($totalMoney);
-		print(color("reset")."\n");
+		print(color("reset")."\n\n");
 	}
 }
 sub subtotal
