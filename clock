@@ -213,7 +213,7 @@ sub report
 			print(color("reset"));
 		}
 		print(color("bold"));
-		print("\nTotal: ");
+		print("\nGrand Total: ");
 		print(friendlyDuration($gtotal));
 		printf(' ($%.2f)', $totalMoney) if($totalMoney);
 		print(color("reset")."\n");
