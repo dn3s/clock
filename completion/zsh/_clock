@@ -1,0 +1,11 @@
+#compdef clock
+
+_clock() {
+	if [[ -n $words[2] ]] && [[ $words[2] == "show" ]] || [[ $words[2] == "in" ]] || [[ $words[2] == "total" ]]; then #complete job
+		_files -W "$HOME/.hours/" -g "*" -F ".*" && return 0
+	else
+		c=("in:Clock in" "out:Clock out" "ls:Show overview of projects" "total:Mark a subtotal for billing etc" "show:Show hours worked on a project")
+		_describe -V "Command" c
+	fi
+}
+#_clock "$@"
