@@ -14,38 +14,54 @@ my $css="test.css";
 my $currentfile=File::Spec->catdir($dir, ".current");
 $command=$command || "";
 
-if($command=~/^(in|on|go|start|begin|open)$/) {
+if($command=~/^(in)$/) {
 	start($job);
 }
-elsif($command=~/^(out|off|stop|finish|done|close|quit|exit|leave|end)$/) {
+elsif($command=~/^(out)$/) {
 	stop($job || current());
 }
-elsif($command=~/^(list|print|show|view|display|history|report|invoice|bill|che(ck|que))$/) {
+elsif($command=~/^(show)$/) {
 	report($job || current(), $n);
 }
-elsif($command=~/^(html|fancy)$/) {
+elsif($command=~/^(html)$/) {
 	html($job || current(), $n);
 }
-elsif($command=~/^(ls|list|what|projects|jobs|work)$/) {
+elsif($command=~/^(ls)$/) {
 	ls();
+}
+elsif($command=~/^(total)$/) {
+	addTotalRow($job || current(), $n);
 }
 elsif($command=~/^(-*help|-?h)$/) {
 	print(wrap("","",<<END));
 $0:
-Keep track of your projects and shit.
+Keep track of your projects.
 
 Usage:
 $0 <command>
 
 Commands:
 
-Start:
-Type "start" or "in" or "go" or whatever, followed by the name of the job you want to track. If the job file doesn't exist, it will be created.
+in:
+Type "$0 in", followed by the name of the project you want to track. If the job file doesn't exist, it will be created.
 
-Stop:
-Type "stop" or "out" or something, to mark when you're done working on a job for the day.
+out:
+Type "$0 out" to mark when you're done working on a project for the day. You will be prompted for a comment.
 
-Status: type "status" or really anything other than "help" and it will tell you what you're supposed to be working on and how long you've been at it
+ls:
+Type "$0 ls" to see a list of projects you are tracking
+
+total:
+Type "$0 total", optionally followed by a number, to add a subtotal row to your report. This is useful for breaking up work on a project into multiple invoices.
+If followed by a number, your hourly rate of pay for this subtotal block will be set to the number. Any subsequent subtotal rows will default to this rate of pay until a different one is specified.
+
+show:
+Type "$0 show", followed by the name of a project, and it will show a complete history of work. You may want to pipe this into less if you have a large history.
+
+status:
+Type "$0 status" (or just "$0"; it's default) to see how long you've been working on your current project. If you're not clocked in on any project, it will print a list of projects.
+
+The data is stored in the ~/.hours directory, in a simple, human-readable and human-editable plain text format.
 END
 }
 else {
@@ -88,6 +104,24 @@ sub stop
 	else {
 		print("You aren't working on anything!\n");
 	}
+}
+sub addTotalRow
+{
+	(my $job, my $rate)=@_;
+	my $current=current();
+	if($current eq $job) {
+		stop(current())
+	}
+	my $rateString="";
+	if($rate) {
+		$rateString=sprintf("%.2f", nearest(0.01, $rate));
+	}
+	print("Please enter a comment: ");
+	my $comment=<STDIN>;
+	chomp($comment);
+	open(my $fh, ">>", jobfile($job)) or die("Cannot open file for writing\n");
+	print $fh "\t$rateString $comment\n";
+	close($fh);
 }
 
 sub ls
@@ -133,13 +167,18 @@ sub report
 	my $total=0;
 	my $gtotal=0;
 	my $totalMoney=0;
+	my $enclosed=1;
 	print("Work history for $job:\n");
-	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/tail $jobfile`)) {
-		print("┌───────────────┬────────┬────────┬────────┐\n");
+	if(-e $jobfile and my @lines=split(/\n/, `/usr/bin/cat $jobfile`)) {
+		print("╭───────────────┬────────┬────────┬────────╮\n");
 		print("│Date           │Time    │Duration│Comments│\n"); 
-		print("├───────────────┼────────┼────────┼────────┘\n");
+		print("├───────────────┼────────┼────────┼────────╯\n");
 		foreach my $line (@lines) {
-			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s+(.*)$/) { #a normal, closed row
+			if($enclosed==0) {
+				print("├───────────────┬────────┬────────╮\n");
+				$enclosed=1;
+			}
+			if((my $timestamp, my $duration, my $comment)=$line=~/^(\d+)\s+(\d+)\s*(.*)$/) { #a normal, closed row
 				$total+=$duration;
 				$gtotal+=$duration;
 				my $time=localtime($timestamp)->strftime("%T");
@@ -147,12 +186,13 @@ sub report
 				$duration=duration($duration);
 				print("│$date│$time│$duration│$comment\n"); 
 			}
-			elsif((my $r, my $subtotalComment)=$line=~/^\s+(\d+(?:\.\d+)?)?\s*(.*)$/) { #a subtotal/invoice type thing
-				print("└───────────────┴────────┴────────┘\n");
+			elsif((my $r, my $subtotalComment)=$line=~/^$|^\s+(\d+(?:\.\d+)?)?\s*(.*)$/) { #a subtotal/invoice type thing
+				print("├───────────────┴────────┴────────╯\n");
+				$enclosed=0;
 				$rate=$r if($r);
-				print("$subtotalComment ") if($subtotalComment);
+				print("│ " . color("bold") . "$subtotalComment:" . color("reset") . "\n") if($subtotalComment);
+				print("│ ");
 				$totalMoney+=subtotal($total, $rate);
-				print("┌───────────────┬────────┬────────┐\n");
 				$total=0;
 			}
 			elsif(($timestamp)=$line=~/^(\d+)$/) { #an entry that has not yet been closed (still onging)
@@ -165,11 +205,16 @@ sub report
 				
 			}
 		}
-		print("└───────────────┴────────┴────────┘\n");
-		$totalMoney+=subtotal($total, $rate);
+		if($enclosed==1) {
+			print("├───────────────┴────────┴────────╯\n");
+			print("│ ");
+			print(color("italic"));
+			$totalMoney+=subtotal($total, $rate) if($total);
+			print(color("reset"));
+		}
 		print(color("bold"));
 		print("\nTotal: ");
-		print(friendlyDuration($total));
+		print(friendlyDuration($gtotal));
 		printf(' ($%.2f)', $totalMoney) if($totalMoney);
 		print(color("reset")."\n");
 	}
@@ -270,6 +315,7 @@ sub current
 		close($fh);
 		return $current;
 	}
+	return 0;
 }
 sub duration
 {
