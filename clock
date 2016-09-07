@@ -61,7 +61,7 @@ Type "$0 show", followed by the name of a project, and it will show a complete h
 status:
 Type "$0 status" (or just "$0"; it's default) to see how long you've been working on your current project. If you're not clocked in on any project, it will print a list of projects.
 
-The data is stored in the ~/.hours directory, in a simple, human-readable and human-editable plain text format.
+The data is stored in text files in the ~/.hours directory, in a simple, human-readable format.
 END
 }
 else {
